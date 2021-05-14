@@ -1,7 +1,8 @@
-use crate::control::state::State;
 use anyhow::Error;
+use crate::context::Context;
+use crate::state::State;
 
-pub type Call = dyn Fn(&mut State) -> Result<(), Error> + Send + Sync + 'static;
+pub type Call = dyn Fn(&mut State, &mut Context) -> Result<(), Error> + Send + Sync + 'static;
 
 pub enum Message {
     Action(Action),
@@ -14,6 +15,7 @@ pub enum Action {
 
 pub enum System {
     Shutdown,
+    SetContext(Context),
     Reload(String),
     Store(String),
 }
