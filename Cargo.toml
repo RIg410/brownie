@@ -1,0 +1,10 @@
+[package]
+name = "brownie"
+version = "0.1.0"
+edition = "2018"
+
+[dependencies]
+dotenv = "0.13.0"
+log = "0.4.14"
+anyhow = "1.0.26"
+rayon = "1.5"
