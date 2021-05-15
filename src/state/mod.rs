@@ -1,11 +1,18 @@
+pub mod device;
+
 use anyhow::Result;
 use std::fs;
 use serde_json;
 use serde::{Serialize, Deserialize};
+use std::collections::HashMap;
+use crate::state::device::Device;
+use crate::state::device::gateway::Gateway;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct State {
-
+    rooms: HashMap<String, Vec<usize>>,
+    devices: Vec<(Gateway, Device)>,
+    names: HashMap<String, usize>,
 }
 
 impl State {

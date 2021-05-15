@@ -1,29 +1,36 @@
-use std::sync::mpsc::{channel, sync_channel, Receiver, Sender};
 use std::sync::Arc;
+use std::sync::mpsc::{channel, Receiver, Sender, sync_channel};
 use std::thread;
 use std::thread::JoinHandle;
 
 use anyhow::Result;
 
+use crate::context::Context;
 use crate::control::message::{Action, Call, Message, System};
 use crate::state::State;
-use crate::context::Context;
+use crate::control::io::IO;
 
 #[derive(Clone)]
 pub struct Controller {
     sender: Sender<Message>,
-    join: Arc<Option<JoinHandle<()>>>,
 }
 
 impl Controller {
-    pub fn new() -> Controller {
+    pub fn new() -> (Handle, Controller) {
         let (sender, receiver) = channel();
-        let handler = thread::spawn(move || Self::inner_loop(receiver));
+        let controller = Controller {
+            sender: sender.clone(),
+        };
 
-        Controller {
-            sender,
-            join: Arc::new(Some(handler)),
-        }
+        let inner_controller = controller.clone();
+        let handler = thread::spawn(move || Self::inner_loop(inner_controller, receiver));
+        (
+            Handle {
+                sender: sender.clone(),
+                join: Arc::new(Some(handler)),
+            },
+            controller
+        )
     }
 
     pub fn call(&self, call: Box<Call>) -> Result<()> {
@@ -31,9 +38,9 @@ impl Controller {
     }
 
     pub fn read<C, R>(&self, cl: C) -> Result<R>
-    where
-        C: Fn(&mut State, &mut Context) -> R + Send + Sync + 'static,
-        R: Send + Sync + 'static,
+        where
+            C: Fn(&mut State, &mut IO) -> R + Send + Sync + 'static,
+            R: Send + Sync + 'static,
     {
         let (sender, receive) = sync_channel(1);
 
@@ -50,9 +57,9 @@ impl Controller {
         Ok(self.sender.send(msg)?)
     }
 
-    fn inner_loop(receiver: Receiver<Message>) {
+    fn inner_loop(controller: Controller, receiver: Receiver<Message>) {
         let mut state: Option<State> = None;
-        let mut context: Option<Context> = None;
+        let mut context: Option<IO> = None;
         loop {
             match receiver.recv() {
                 Ok(msg) => match msg {
@@ -99,7 +106,10 @@ impl Controller {
                         }
                         System::SetContext(cxt) => {
                             log::info!("Set context.");
-                            context = Some(cxt);
+                            context = Some(IO {
+                                context: cxt,
+                                controller: controller.clone()
+                            });
                         }
                     },
                 },
@@ -111,7 +121,13 @@ impl Controller {
     }
 }
 
-impl Drop for Controller {
+#[derive(Debug)]
+pub struct Handle {
+    sender: Sender<Message>,
+    join: Arc<Option<JoinHandle<()>>>,
+}
+
+impl Drop for Handle {
     fn drop(&mut self) {
         if let Err(err) = self.sender.send(Message::System(System::Shutdown)) {
             log::warn!("Failed to drop controller. {}", err);
